@@ -325,7 +325,7 @@ class TrackCentroid():
         return self.objects_dict
 
 
-class ObjecteDetector():
+class DLObjecteDetector():
     '''
     Classs to Extract features / Objects from an Image using any Deep Learning Model. Use it for different classes or models. Works perfectly with YOLO
     '''
@@ -365,7 +365,7 @@ class ObjecteDetector():
         return classes, scores, boxes, end-start
 
     
-    def detect(self,classes_file:str,filepath:[str,bool,None]=None,resize:bool=False,nms:float=0.45,confidence:float=0.51,find:[None,list,tuple]=None):
+    def detect_object(self,classes_file:str,filepath:[str,bool,None]=None,resize:bool=False,nms:float=0.45,confidence:float=0.51,find:[None,list,tuple]=None):
         '''
         Get features from a DNN model in a Video and display it in real time
         args:
@@ -410,40 +410,7 @@ class ObjecteDetector():
         cv2.destroyAllWindows()
 
 
-class ObjectTracker():
-    '''
-    Classs to Extract features / Objects from an Image using any Deep Learning Model. Use it for different classes or models. Works perfectly with YOLO
-    '''
-    def __init__(self,config:str,model_weight:str,disappear_limit:int=50):
-        '''
-        args:
-            config: path to config file
-            weight: path of weight file
-            disappear_limit: remove the object id if it isn't in the frame for these many frames
-        '''
-        warnings.warn("'opencv-contrib' needed. Use 'pip install opencv-contrib'") 
-        self.model_weight = model_weight
-        self.config = config
-        net = cv2.dnn.readNet(self.model_weight,self.config)
-        self.model = cv2.dnn_DetectionModel(net)
-        self.model.setInputParams(size=(416,416),scale=1/255)
-        self.centroid_tracker = TrackCentroid(disappear_limit=disappear_limit)
-
-
-    def get_c_s_bb(self,frame,nms:float=0.45,confidence:float=0.51,):
-        '''
-        Get class, score and all the bounding boxes which qualifies the given criteria of nms and confidence
-        args:
-            frame: Input image or Frame of a video, Camera
-            nms: Non max supression threshold. BB confidence less than this value will be ignored
-            conf: Confidence that an object has been found. Objects with values less than this will be ignored
-        out: Per valid (above nms & confidence) result -> Class value (int), probability (float), bounnding boxes (tuple) with time taken for inference
-        '''
-        classes, scores, boxes = self.model.detect(frame, confidence, nms)
-        return classes, scores, boxes
-
-
-    def track_object(self,classes_file:str,find:str,filepath:[str,bool,None]=None,nms:float=0.45,confidence:float=0.51,count_at_t:bool=True,unique:bool=True):
+    def track_object(self,classes_file:str,find:str,filepath:[str,bool,None]=None,disappear_limit:int=50,nms:float=0.45,confidence:float=0.51,count_at_t:bool=True,unique:bool=True):
         '''
         Get features from a DNN model in a Video and display it in real time
         args:
@@ -454,7 +421,9 @@ class ObjectTracker():
             conf: Confidence that an object has been found. Objects with values less than this will be ignored
             count_at_t: Whether to count the number of objects in a certain time t
             unique: Whether to point the total number of unique objects encountered up until now
+            disappear_limit: remove the object id if it isn't in the frame for these many frames
         '''
+        self.centroid_tracker = TrackCentroid(disappear_limit=disappear_limit)
         cap = cv2.VideoCapture(0) if not filepath else cv2.VideoCapture(filepath)
 
         with open(classes_file, "r") as f:
@@ -469,7 +438,7 @@ class ObjectTracker():
 
             rectangles = []
             count = 0
-            classes, scores, boxes = self.get_c_s_bb(frame,nms,confidence) # get detections
+            classes, scores, boxes, _ = self.get_all_features(frame,nms,confidence) # get detections
 
             for (classid, score, box) in zip(classes, scores, boxes):
                 if (class_dict[classid[0]] == find) and (score > confidence):
@@ -494,7 +463,7 @@ class ObjectTracker():
                     cv2.putText(frame, f"ID: {object_id}", (centroid[0] - 10, centroid[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
                     cv2.circle(frame, (centroid[0],centroid[1]), 1, (0, 0, 255), 2) # plot a dot in the middle of bounding box
 
-            cv2.imshow("detections", frame)
+            cv2.imshow("Tracking", frame)
 
             key = cv2.waitKey(1)
             if key==27 or key == ord('q'):
