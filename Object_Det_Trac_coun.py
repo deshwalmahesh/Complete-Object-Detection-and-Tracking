@@ -445,11 +445,11 @@ class DLObjectDetector():
         cap.release()
         cv2.destroyAllWindows()
 
-    
 
-class HaarCascadeFeatures():
+class HaarCascadeTracker():
     '''
-    Class to detect objects using Haar Cascade. Use it with Tracking by merging with Tracker() class in above sample
+    Class to detect objects using Haar Cascade. Using it with Tracking by merging with Tracker() class in above sample
+    1 Haarfile detects only 1 type of features. You can try it with multiples too but you have to run a loop for all and then get detections
     '''
     def __init__(self,cascade:str,label:str):
         '''
@@ -460,6 +460,7 @@ class HaarCascadeFeatures():
         self.cascade = cascade
         self.model = cv2.CascadeClassifier(self.cascade)
         self.label = label
+        self.centroid_tracker = TrackCentroid()
     
     
     def get_all_feat(self,frame:np.ndarray,factor:float=1.5,neigh:int=5,smooth:bool=False):
@@ -477,7 +478,7 @@ class HaarCascadeFeatures():
         return self.model.detectMultiScale(grey,scaleFactor=factor, minNeighbors=neigh)   # return ALL the detected Features   
 
     
-    def detect(self,filepath:[bool,str]=None,crop:[bool,tuple,list]=(416,416),):
+    def track(self,filepath:[bool,str]=None,crop:[bool,tuple,list]=(416,416)):
         '''
         args:
             filepath: file to be used the detection on. uses Camera if not given any filepath
@@ -492,12 +493,25 @@ class HaarCascadeFeatures():
             
             features = self.get_all_feat(frame) # get all features
 
+            rectangles = []
+            count = 0
             for feat in features:
-                x ,y, w, h = feat[0], feat[1], feat[2], feat[3] # start x, start y, width, height of BB
-                
-                cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
-                cv2.putText(frame,self.label,(x,y-10),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,255,0),2) # this is where we used label
-                                    
+                x, y, w, h = feat[0], feat[1], feat[2], feat[3] # start x, start y, width, height of BB
+                box = (x,y,x+w,y+h)
+                rectangles.append(box)
+                cv2.rectangle(frame, (x,y,w,h), (0,255,0), 1)
+                cv2.putText(frame, self.label, (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 1)
+                count+=1
+
+            objects_dict = self.centroid_tracker.refresh(rectangles)
+
+            label = f"There are {count} {self.label}s in the frame right now"
+            cv2.putText(frame,label,(5, 15), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.7, (255,0,0), 1)
+            
+            for (object_id, centroid) in objects_dict.items(): # get every object per frame
+                cv2.putText(frame, f"ID: {object_id}", (centroid[0] - 10, centroid[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+                cv2.circle(frame, (centroid[0],centroid[1]), 1, (0, 0, 255), 2) # plot a dot in the middle of bounding box
+
             cv2.imshow('Video',frame)
 
             key = cv2.waitKey(1)
