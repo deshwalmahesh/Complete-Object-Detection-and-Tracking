@@ -325,65 +325,6 @@ class TrackCentroid():
         return self.objects_dict
 
     
-class FaceTracker():
-    '''
-    Detect and count the Faces in Video by using the Centroid Shift algorithm on the bounding boxes of features returned by 
-    object Recognition Deep Neural Networks. Change it for YOLO too for different classes. This one detects the faces based on Caffe model.
-    '''
-    def __init__(self,protofile:str,model_name:str):
-        '''
-        Uses the Caffe based deep learning models. You can use HaarCascade models too for ease
-        args:
-            protofile: file path for the saved caffe model
-            model_name: name of the model to be used
-        '''
-        self.protofile = protofile
-        self.model_name = model_name
-        self.centroid_tracker = TrackCentroid() # init the class
-        self.object_net = cv2.dnn.readNetFromCaffe(self.protofile, self.model_name) # load the deep learning object recognition network
-
-
-    def track(self,filename:[None,str]=None,crop:[bool,tuple,list]=(480,480),threshold:float=0.51):
-        '''
-        Track objects
-        args:
-            filename: path to video file
-            crop: resize tuple for each frame
-            threshold: Confidence or threshold for probability of object. Values below this threshold will be discarded
-        '''
-        cap = cv2.VideoCapture(0) if not filename else cv2.VideoCapture(filename)
-        while cap.isOpened():
-            _,frame = cap.read()
-            if crop:
-                frame = cv2.resize(frame, crop)
-            (H, W) = frame.shape[:2] # Height and Width of the Frame
-
-            blob = cv2.dnn.blobFromImage(frame, 1.0, (W, H),(104.0, 177.0, 123.0)) # make a blob from input image
-            self.object_net.setInput(blob) # make inference
-            detections = self.object_net.forward()
-            rectangles = []
-            for i in range(0, detections.shape[2]): # get all detections one by one
-                if detections[0, 0, i, 2] > threshold: # look only those objects where prob is > threshold
-                    box = detections[0, 0, i, 3:7] * np.array([W, H, W, H]) # grt bounding box
-                    rectangles.append(box.astype("int"))
-                    (x_start, y_start, x_end, y_end) = box.astype("int")
-                    cv2.rectangle(frame, (x_start, y_start), (x_end, y_end),(0, 255, 0), 2) # create a bounding box rectangle on the image 
-
-            objects_dict = self.centroid_tracker.refresh(rectangles)
-
-            for (object_id, centroid) in objects_dict.items(): # get every object per frame
-                cv2.putText(frame, f"ID: {object_id}", (centroid[0] - 10, centroid[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-                cv2.circle(frame, (centroid[0], centroid[1]), 3, (0, 255, 0), 2) # plot a dot in the middle of bounding box
-
-            cv2.imshow('Video',frame)
-            key = cv2.waitKey(13)
-            if key==27 or key == ord('q'): # Press escape / q  to close all windows
-                break
-
-        cap.release()
-        cv2.destroyAllWindows()
-
-
 class ObjecteDetector():
     '''
     Classs to Extract features / Objects from an Image using any Deep Learning Model. Use it for different classes or models. Works perfectly with YOLO
