@@ -157,7 +157,7 @@ class ColorMaskBasedTracker():
         cv2.destroyAllWindows()
 
 
-class ContourBasedTracking():
+class ContourBasedTracker():
     '''
     Works on Backgrounnd Segmentation of Images
     Class to track the objects which are a part of rule based Contours. Objects coming within those contours will be detected. 
@@ -325,7 +325,7 @@ class TrackCentroid():
         return self.objects_dict
 
 
-class DLObjecteDetector():
+class DLObjectDetector():
     '''
     Classs to Extract features / Objects from an Image using any Deep Learning Model. Use it for different classes or models. Works perfectly with YOLO
     '''
