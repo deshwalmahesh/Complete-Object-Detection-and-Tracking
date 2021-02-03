@@ -347,6 +347,7 @@ class DLObjectDetector():
             net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA_FP16)
         self.model = cv2.dnn_DetectionModel(net) # load the exact model
         self.model.setInputParams(size=self.size,scale=1/255)
+        self.centroid_tracker = TrackCentroid()
 
 
     def get_all_features(self,frame,nms:float=0.45,confidence:float=0.51,):
@@ -366,17 +367,22 @@ class DLObjectDetector():
         return classes, scores, boxes, end-start
 
     
-    def detect_object(self,classes_file:str,filepath:[str,bool,None]=None,resize:bool=False,nms:float=0.45,confidence:float=0.51,find:[None,list,tuple]=None):
+    def perform(self,classes_file:str,filepath:[str,bool,None]=None,kind:str='detect',resize:bool=False,nms:float=0.45,confidence:float=0.51,
+        find:[None,list,tuple]=None,disappear_limit:int=50,count_at_t:bool=True,unique:bool=True):
         '''
         Get features from a DNN model in a Video and display it in real time
         args:
             classes_file: classes file names
             filepath: Path of the video file. If not provided, Use the Video Camera
+            kind: Detection or tracking
             size: size of the input image
             resize: Whether to resize the image or use the original
             nms: Non max supression threshold. BB confidence less than this value will be ignored
             conf: Confidence that an object has been found. Objects with values less than this will be ignored
             find: Classes to look for. Classes should be in in 'classes' file. None returns all the classes
+            count_at_t: Whether to count the number of objects in a certain time t . Valid for Tracking Only
+            unique: Whether to point the total number of unique objects encountered up until now. Valid for Tracking Only
+            disappear_limit: remove the object id if it isn't in the frame for these many frames. Valid for Tracking Only
         '''
         cap = cv2.VideoCapture(0) if not filepath else cv2.VideoCapture(filepath)
 
@@ -393,15 +399,44 @@ class DLObjectDetector():
 
             classes, scores, boxes, _ = self.get_all_features(frame,nms,confidence) # get ALL detections
 
-            for (classid, score, box) in zip(classes, scores, boxes): # traverse each detection in the frame
-                if find and class_dict[classid[0]] not in find: # if the detected class is the one we want
-                    continue
-                else:
-                    color = COLORS[classid[0]] # nothing special. Just a color coding scheme for different classes classid is an array of 1 element
-                    label = "%s : %f" % (class_dict[classid[0]], score)
-                    cv2.rectangle(frame, box, color, 1)
-                    cv2.putText(frame, label, (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1)
+            if kind == 'detect':
+                for (classid, score, box) in zip(classes, scores, boxes): # traverse each detection in the frame
+                    if find and class_dict[classid[0]] not in find: # if the detected class is the one we want
+                        continue
+                    else:
+                        color = COLORS[classid[0]] # nothing special. Just a color coding scheme for different classes classid is an array of 1 element
+                        label = "%s : %f" % (class_dict[classid[0]], score)
+                        cv2.rectangle(frame, box, color, 1)
+                        cv2.putText(frame, label, (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1)
             
+            elif kind == 'track':
+                assert isinstance(find,str), "Input a single object type for Tracking, such as find ='person' etc"
+                rectangles = []
+                count = 0
+
+                for (classid, score, box) in zip(classes, scores, boxes):
+                    if (class_dict[classid[0]] == find) and (score > confidence):
+                        color = COLORS[classid[0]] # nothing special. Just a color coding scheme for different classes classid is an array of 1 element
+                        label = "%s : %f" % (class_dict[classid[0]], score)
+                        cv2.rectangle(frame, box, color, 1)
+                        cv2.putText(frame, label, (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1)
+
+                        x, y , w, h, = box[0], box[1], box[2], box[3]
+                        box = (x,y,x+w,y+h)
+                        rectangles.append(box) # Because rectangle object Tracker() looks for is x,y,x_end, y_end
+                        count+=1
+
+                if count_at_t: # show how many of those objects are present in the frame now
+                    label = f"There are {count} {find}s in the frame right now"
+                    cv2.putText(frame,label,(5, 15), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.7, (255,0,0), 1)
+
+                objects_dict = self.centroid_tracker.refresh(rectangles)
+                
+                if unique: # prints centroid of each frame
+                    for (object_id, centroid) in objects_dict.items(): # get every object per frame
+                        cv2.putText(frame, f"ID: {object_id}", (centroid[0] - 10, centroid[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+                        cv2.circle(frame, (centroid[0],centroid[1]), 1, (0, 0, 255), 2) # plot a dot in the middle of bounding box
+   
             cv2.imshow("detections", frame)
             key = cv2.waitKey(1)
             if key==27 or key == ord('q'):
@@ -410,69 +445,7 @@ class DLObjectDetector():
         cap.release()
         cv2.destroyAllWindows()
 
-
-    def track_object(self,classes_file:str,find:str,filepath:[str,bool,None]=None,disappear_limit:int=50,nms:float=0.45,confidence:float=0.51,count_at_t:bool=True,unique:bool=True):
-        '''
-        Get features from a DNN model in a Video and display it in real time
-        args:
-            classes_file: classes file names. Used with YOLO Version
-            find: Classes to look for. Classes should be in in 'classes' file
-            filepath: Path of the video file. If not provided, Use the Video Camera
-            nms: Non max supression threshold. BB confidence less than this value will be ignored
-            conf: Confidence that an object has been found. Objects with values less than this will be ignored
-            count_at_t: Whether to count the number of objects in a certain time t
-            unique: Whether to point the total number of unique objects encountered up until now
-            disappear_limit: remove the object id if it isn't in the frame for these many frames
-        '''
-        self.centroid_tracker = TrackCentroid(disappear_limit=disappear_limit)
-        cap = cv2.VideoCapture(0) if not filepath else cv2.VideoCapture(filepath)
-
-        with open(classes_file, "r") as f:
-            class_dict = {i:cname.strip() for i,cname in enumerate(f.readlines())}
-            class_names = list(class_dict.values())
-
-        COLORS = np.random.randint(0,256,size=(len(class_names),3)).tolist() # generate different color for different classes
-
-        while cap.isOpened():
-            _, frame = cap.read()
-            frame = cv2.resize(frame,(416,416))
-
-            rectangles = []
-            count = 0
-            classes, scores, boxes, _ = self.get_all_features(frame,nms,confidence) # get detections
-
-            for (classid, score, box) in zip(classes, scores, boxes):
-                if (class_dict[classid[0]] == find) and (score > confidence):
-                    color = COLORS[classid[0]] # nothing special. Just a color coding scheme for different classes classid is an array of 1 element
-                    label = "%s : %f" % (class_dict[classid[0]], score)
-                    cv2.rectangle(frame, box, color, 1)
-                    cv2.putText(frame, label, (box[0], box[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 1)
-
-                    x, y , w, h, = box[0], box[1], box[2], box[3]
-                    box = (x,y,x+w,y+h)
-                    rectangles.append(box) # Because rectangle object Tracker() looks for is x,y,x_end, y_end
-                    count+=1
-
-            if count_at_t: # show how many of those objects are present in the frame now
-                label = f"There are {count} {find}s in the frame right now"
-                cv2.putText(frame,label,(5, 15), cv2.FONT_HERSHEY_COMPLEX_SMALL, 0.7, (255,0,0), 1)
-
-            objects_dict = self.centroid_tracker.refresh(rectangles)
-            
-            if unique: # prints centroid of each frame
-                for (object_id, centroid) in objects_dict.items(): # get every object per frame
-                    cv2.putText(frame, f"ID: {object_id}", (centroid[0] - 10, centroid[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-                    cv2.circle(frame, (centroid[0],centroid[1]), 1, (0, 0, 255), 2) # plot a dot in the middle of bounding box
-
-            cv2.imshow("Tracking", frame)
-
-            key = cv2.waitKey(1)
-            if key==27 or key == ord('q'):
-                break
-
-        cap.release()
-        cv2.destroyAllWindows()
-
+    
 
 class HaarCascadeFeatures():
     '''
