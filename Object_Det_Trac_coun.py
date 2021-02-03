@@ -357,7 +357,8 @@ class DLObjecteDetector():
             nms: Non max supression threshold. BB confidence less than this value will be ignored
             conf: Confidence that an object has been found. Objects with values less than this will be ignored
         out: 
-            list of Valid BB boxes: All claases, All score, All Boxes, inference time
+            Tuple of list of Valid BB boxes: All classes, All score, All Boxes, inference time: ([c1,c2,cw],[s1,s2,s3],[b1,b2,b3])
+            NOTE: b1,b2,b3 are themselves in the format as b1 = [x1,y1,w1,h1], b2 = [x2,y2,w2,h2] 
         '''
         start = time.time()
         classes, scores, boxes = self.model.detect(frame, confidence, nms) # get the array of classes,probs for each class and BB
@@ -495,7 +496,7 @@ class HaarCascadeFeatures():
             neigh: Minimum neighbours to use
             Smooth: Whether to blur the image for smoothning. Will use Gaussian Blur. Change it to Mean, Median or Bilateral filters or soem other
         out:
-            list of ALL the bounding boxes
+            list of ALL the bounding boxes. List of tuples of [(x,y,w,h),(x1,w1,h1,w1)]
         '''
         grey = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
         if smooth:
