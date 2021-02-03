@@ -324,7 +324,7 @@ class TrackCentroid():
 
         return self.objects_dict
 
-    
+
 class ObjecteDetector():
     '''
     Classs to Extract features / Objects from an Image using any Deep Learning Model. Use it for different classes or models. Works perfectly with YOLO
@@ -349,14 +349,15 @@ class ObjecteDetector():
         self.model.setInputParams(size=self.size,scale=1/255)
 
 
-    def get_c_s_bb(self,frame,nms:float=0.45,confidence:float=0.51,):
+    def get_all_features(self,frame,nms:float=0.45,confidence:float=0.51,):
         '''
         Get class, score and all the bounding boxes which qualifies the given criteria of nms and confidence
         args:
             frame: Input image or Frame of a video, Camera
             nms: Non max supression threshold. BB confidence less than this value will be ignored
             conf: Confidence that an object has been found. Objects with values less than this will be ignored
-        out: Per valid (above nms & confidence) result -> Class value (int), probability (float), bounnding boxes (tuple) with time taken for inference
+        out: 
+            list of Valid BB boxes: All claases, All score, All Boxes, inference time
         '''
         start = time.time()
         classes, scores, boxes = self.model.detect(frame, confidence, nms) # get the array of classes,probs for each class and BB
@@ -364,7 +365,7 @@ class ObjecteDetector():
         return classes, scores, boxes, end-start
 
     
-    def detect_video(self,classes_file:str,filepath:[str,bool,None]=None,resize:bool=False,nms:float=0.45,confidence:float=0.51,find:[None,list,tuple]=None):
+    def detect(self,classes_file:str,filepath:[str,bool,None]=None,resize:bool=False,nms:float=0.45,confidence:float=0.51,find:[None,list,tuple]=None):
         '''
         Get features from a DNN model in a Video and display it in real time
         args:
@@ -389,7 +390,8 @@ class ObjecteDetector():
             if resize:
                 frame = cv2.resize(frame,self.size)
 
-            classes, scores, boxes, _ = self.get_c_s_bb(frame,nms,confidence) # get detections
+            classes, scores, boxes, _ = self.get_all_features(frame,nms,confidence) # get ALL detections
+
             for (classid, score, box) in zip(classes, scores, boxes): # traverse each detection in the frame
                 if find and class_dict[classid[0]] not in find: # if the detected class is the one we want
                     continue
@@ -502,7 +504,7 @@ class ObjectTracker():
         cv2.destroyAllWindows()
 
 
-class DetectHaar():
+class HaarCascadeFeatures():
     '''
     Class to detect objects using Haar Cascade. Use it with Tracking by merging with Tracker() class in above sample
     '''
@@ -517,14 +519,26 @@ class DetectHaar():
         self.label = label
     
     
-    def detect(self,filepath:[bool,str]=None,crop:[bool,tuple,list]=(416,416),factor:float=1.5,neigh:int=5,blur:bool=False):
+    def get_all_feat(self,frame:np.ndarray,factor:float=1.5,neigh:int=5,smooth:bool=False):
+        '''
+        args:
+            factor: Scale factor to use
+            neigh: Minimum neighbours to use
+            Smooth: Whether to blur the image for smoothning. Will use Gaussian Blur. Change it to Mean, Median or Bilateral filters or soem other
+        out:
+            list of ALL the bounding boxes
+        '''
+        grey = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+        if smooth:
+            grey = cv2.GaussianBlur(grey,ksize=(3,3),sigmaX=0) # change these params for your image specific
+        return self.model.detectMultiScale(grey,scaleFactor=factor, minNeighbors=neigh)   # return ALL the detected Features   
+
+    
+    def detect(self,filepath:[bool,str]=None,crop:[bool,tuple,list]=(416,416),):
         '''
         args:
             filepath: file to be used the detection on. uses Camera if not given any filepath
             crop: Whether to crop or not
-            factor: Scale factor to use
-            neigh: Minimum neighbours to use
-            blur: Whether to blur the image for smoothning. Will use Gaussian Blur. Change it to Mean, Median or Bilateral filters or soem other
         '''
         cap = cv2.VideoCapture(0) if not filepath else cv2.VideoCapture(filepath)
 
@@ -533,13 +547,10 @@ class DetectHaar():
             if crop:
                 frame = cv2.resize(frame,crop)
             
-            grey = cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
-            if blur:
-                grey = cv2.GaussianBlur(grey,ksize=(3,3),sigmaX=0) # change these params for your image specific
-            features = self.model.detectMultiScale(grey,scaleFactor=factor, minNeighbors=neigh)     
+            features = self.get_all_feat(frame) # get all features
 
             for feat in features:
-                x ,y, w, h = feat[0], feat[1], feat[2], feat[3]
+                x ,y, w, h = feat[0], feat[1], feat[2], feat[3] # start x, start y, width, height of BB
                 
                 cv2.rectangle(frame,(x,y),(x+w,y+h),(0,255,0),2)
                 cv2.putText(frame,self.label,(x,y-10),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,255,0),2) # this is where we used label
@@ -552,8 +563,12 @@ class DetectHaar():
 
         cap.release()
         cv2.destroyAllWindows()
-        
 
-        
+
+class LineCrossingCounting():
+    '''
+    Class to count the objects which has crossed a certain line. Needs Bounding Box. Bounding Boxes can be from HaarCascade, DL Model or so
+    '''
+    ...
 
 
