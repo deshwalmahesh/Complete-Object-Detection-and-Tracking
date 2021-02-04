@@ -175,12 +175,23 @@ class ContourBasedFeatures():
         if cv2.contourArea(contour) < 750: # get the contour IFF it has an area greater than this area
             return False # early return
         (x,y,w,h) = cv2.boundingRect(contour) # get minimal shape/ coordinates of rectanle which fits the given countor
-        if h<w: # for people as they'll have height greater than width. Again , choose your rules
+        if h<w or w < 50 or h < 50: # for people as they'll have height greater than width. Width and height should be this. Again ,choose your rules
             return False # early return
         return True
 
 
-    def detect(self,method=None,filename:[str,None,bool]=None,crop:[tuple,list]=(480,480),
+    def get_center(self,x, y, w, h): # get_center
+        '''
+        Get center coordinates of a bounding box
+        '''
+        x1 = int(w / 2)
+        y1 = int(h / 2)
+        cx = x + x1
+        cy = y + y1
+        return cx,cy
+
+
+    def perform(self,method=None,filename:[str,None,bool]=None,kind:str='count',crop:[tuple,list]=(480,480),
         ksize:[tuple,list]=(3,3),sigmaX:int=0,
         thresh:int=15,maxval:int=255,type=cv2.THRESH_BINARY,kernel:[None,int]=None,iter=5,
         cont_mode=cv2.RETR_TREE,cont_method=cv2.CHAIN_APPROX_SIMPLE):
@@ -189,6 +200,7 @@ class ContourBasedFeatures():
         args:
             method: Callable. PAss your usecase specific function to find if the given contour is valid or not. I'll be using the given is_valid() 
             filename: filename for a valid Video file type
+            kind: Whether to Count the objects or detect the objects 
             crop: Crop the original video by how how much size
             ksize: Kernel size of Gaussian Blur
             sigmaX: Standard Deviation in X direction of Gaussian Blur
@@ -203,6 +215,12 @@ class ContourBasedFeatures():
         if not method:
             method = self.is_valid
 
+        offset=6 # Allowed error between pixels
+        line_position = 550 # Position of Line from the top. Depends on where you want the line to be. This line is at the bottom
+        detections = [] # All detections
+        count = 0 # No of objects
+        fps = 65   
+
         cap = cv2.VideoCapture(0) if not filename else cv2.VideoCapture(filename) # these works like Generator
 
         _,curr_frame = cap.read() # read first frame. Starting point
@@ -212,6 +230,7 @@ class ContourBasedFeatures():
             next_frame = cv2.resize(next_frame, crop)
             
         while cap.isOpened(): # while there is a frame remaining
+            time.sleep(float(1/fps))
 
             diff = cv2.absdiff(curr_frame,next_frame) # Get the ABSOLUTE difference of the two frames
             grey = cv2.cvtColor(diff,cv2.COLOR_BGR2GRAY) # convert to grayscale for smoothing and then finding contours
@@ -222,18 +241,35 @@ class ContourBasedFeatures():
             
             for contour in contours: # get each contour and filter it based on the rule. Chose your rules based on objects you are trying to find
                 if method(contour):
-                    (x,y,w,h) = cv2.boundingRect(contour) # get minimal shape/ coordinates of rectanle which fits the given countor
-                    cv2.rectangle(curr_frame,pt1=(x,y),pt2=(x+w,y+h),color=(255,0,1),thickness=2) # draw a red box around the contour of thickness 3
-                    cv2.putText(curr_frame,text="Analysis: Moving",org=(10,10),fontFace=cv2.FONT_HERSHEY_SIMPLEX,fontScale=1,color=(0,255,0),thickness=3)
-                    # put a font of Hershey style at coordinates (10,10) of thickness 4 with Green Color which says: "Analysis: Moving"
+                    x,y,w,h = cv2.boundingRect(contour) # get minimal shape/ coordinates of rectanle which fits the given countor
+                    cv2.rectangle(curr_frame,pt1=(x,y),pt2=(x+w,y+h),color=(0,255,1),thickness=2) # draw a red box around the contour of thickness 3
+                    
+                    if kind == 'detect': # if we are performing detections
+                        cv2.putText(curr_frame,text="Analysis: Moving",org=(10,10),fontFace=cv2.FONT_HERSHEY_SIMPLEX,fontScale=1,color=(0,255,0),thickness=3)
+                        # put a font of Hershey style at coordinates (10,10) of thickness 4 with Green Color which says: "Analysis: Moving"
+                    
+                    elif kind == 'count': # if we are performing counting
+                        cv2.line(curr_frame, (25, line_position), (1200, line_position), (255,127,0), 3) # Draw Crossing line with Blue Color. It is 'Horizontal'
+                        center = self.get_center(x, y, w, h) # get center coordinates of bounding box
+                        detections.append(center)
+                        cv2.circle(curr_frame, center, 4, (0, 0,255), -1) # Draw the BB Center as a dot
 
+                        for x,y in detections:
+                            if y < (line_position + offset) and y > (line_position - offset):
+                                count += 1 # No of objects
+                                cv2.line(curr_frame, (25, line_position), (1200, line_position), (0,127,255), 3) # If a detection has been done, change color
+                                detections.remove((x,y))      
+
+                        cv2.putText(curr_frame, "Objects COUNT : "+str(count), (450, 70), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255),5)
+
+            
             cv2.imshow('Video',curr_frame)
             curr_frame = next_frame
             _, next_frame = cap.read() # swapping
             if crop:
                 next_frame = cv2.resize(next_frame, crop)
 
-            key = cv2.waitKey(10) # change this parameter for slow or fast image visualizations
+            key = cv2.waitKey(1) # change this parameter for slow or fast image visualizations
             if key==27 or key == ord('q'): # Press escape / q  to close all windows
                 break
 
