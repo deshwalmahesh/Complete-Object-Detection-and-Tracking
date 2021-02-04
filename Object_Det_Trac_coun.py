@@ -157,20 +157,37 @@ class ColorMaskBasedTracker():
         cv2.destroyAllWindows()
 
 
-class ContourBasedTracker():
+class ContourBasedFeatures():
     '''
     Works on Backgrounnd Segmentation of Images
     Class to track the objects which are a part of rule based Contours. Objects coming within those contours will be detected. 
     There many parameters which you need to tweak in order to get you results. Method is as follows:
     Grayscale -> Gauss Filter -> Thresholding -> Dialatio -> Find Contour -> Reule to keep/remove eligible contours -> Plot BB
     '''
-    def track(self,filename:[str,None,bool]=None,crop:[tuple,list]=(480,480),
+    def is_valid(self,contour:tuple)->bool:
+        '''
+        Method to find if a contour is valid or not. Just the demo. You can make your method based on what your use case is
+        args:
+            contour: Any contour given by the Background separation method
+        out:
+            Whether the given contour is your use case or not
+        '''
+        if cv2.contourArea(contour) < 750: # get the contour IFF it has an area greater than this area
+            return False # early return
+        (x,y,w,h) = cv2.boundingRect(contour) # get minimal shape/ coordinates of rectanle which fits the given countor
+        if h<w: # for people as they'll have height greater than width. Again , choose your rules
+            return False # early return
+        return True
+
+
+    def detect(self,method=None,filename:[str,None,bool]=None,crop:[tuple,list]=(480,480),
         ksize:[tuple,list]=(3,3),sigmaX:int=0,
         thresh:int=15,maxval:int=255,type=cv2.THRESH_BINARY,kernel:[None,int]=None,iter=5,
-        cont_mode=cv2.RETR_TREE,cont_method=cv2.CHAIN_APPROX_SIMPLE,cont_area_filter:int=750):
+        cont_mode=cv2.RETR_TREE,cont_method=cv2.CHAIN_APPROX_SIMPLE):
         '''
         Track the Objects
         args:
+            method: Callable. PAss your usecase specific function to find if the given contour is valid or not. I'll be using the given is_valid() 
             filename: filename for a valid Video file type
             crop: Crop the original video by how how much size
             ksize: Kernel size of Gaussian Blur
@@ -182,8 +199,10 @@ class ContourBasedTracker():
             iter: No of iterations to run
             cont_mode: Mode to find the contour. Check list as OpenCv website to use others
             cont_method: Exact method to use for finding contours
-            cont_area_filter: Area of contour filter. Area less than this won't count as a good finding
         '''
+        if not method:
+            method = self.is_valid
+
         cap = cv2.VideoCapture(0) if not filename else cv2.VideoCapture(filename) # these works like Generator
 
         _,curr_frame = cap.read() # read first frame. Starting point
@@ -193,6 +212,7 @@ class ContourBasedTracker():
             next_frame = cv2.resize(next_frame, crop)
             
         while cap.isOpened(): # while there is a frame remaining
+
             diff = cv2.absdiff(curr_frame,next_frame) # Get the ABSOLUTE difference of the two frames
             grey = cv2.cvtColor(diff,cv2.COLOR_BGR2GRAY) # convert to grayscale for smoothing and then finding contours
             smooth = cv2.GaussianBlur(grey,ksize=ksize,sigmaX=sigmaX) # change these params for your image specific
@@ -201,12 +221,11 @@ class ContourBasedTracker():
             contours,_ = cv2.findContours(dilated,mode=cont_mode,method=cont_method) # find the contours
             
             for contour in contours: # get each contour and filter it based on the rule. Chose your rules based on objects you are trying to find
-                if cv2.contourArea(contour) > cont_area_filter: # get the contour IFF it has an area greater than this area
+                if method(contour):
                     (x,y,w,h) = cv2.boundingRect(contour) # get minimal shape/ coordinates of rectanle which fits the given countor
-                    if h>w: # for people as they'll have height greater than width. Again , choose your rules
-                        cv2.rectangle(curr_frame,pt1=(x,y),pt2=(x+w,y+h),color=(255,0,1),thickness=2) # draw a red box around the contour of thickness 3
-                        cv2.putText(curr_frame,text="Analysis: Moving",org=(10,10),fontobject=cv2.FONT_HERSHEY_SIMPLEX,fontScale=1,color=(0,255,0),thickness=3)
-                        # put a font of Hershey style at coordinates (10,10) of thickness 4 with Green Color which says: "Analysis: Moving"
+                    cv2.rectangle(curr_frame,pt1=(x,y),pt2=(x+w,y+h),color=(255,0,1),thickness=2) # draw a red box around the contour of thickness 3
+                    cv2.putText(curr_frame,text="Analysis: Moving",org=(10,10),fontFace=cv2.FONT_HERSHEY_SIMPLEX,fontScale=1,color=(0,255,0),thickness=3)
+                    # put a font of Hershey style at coordinates (10,10) of thickness 4 with Green Color which says: "Analysis: Moving"
 
             cv2.imshow('Video',curr_frame)
             curr_frame = next_frame
@@ -513,8 +532,8 @@ class HaarCascadeTracker():
                 cv2.circle(frame, (centroid[0],centroid[1]), 1, (0, 0, 255), 2) # plot a dot in the middle of bounding box
 
             cv2.imshow('Video',frame)
-
-            key = cv2.waitKey(1)
+            
+            key = cv2.waitKey(15)
             if key==27 or key == ord('q'):
                 break
 
@@ -527,5 +546,3 @@ class LineCrossingCounting():
     Class to count the objects which has crossed a certain line. Needs Bounding Box. Bounding Boxes can be from HaarCascade, DL Model or so
     '''
     ...
-
-
